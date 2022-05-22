@@ -31,11 +31,13 @@ desg_compras = pd.DataFrame(
 def carga_precios():
 	init_path = "../testing"
 	# onlyfiles = [f for f in listdir(init_path) if isfile(join(init_path, f))]
-	onlyfiles = [f for f in listdir(init_path) if re.match(".*prices.csv", f)]
+	onlyfiles = [f for f in listdir(init_path) if re.match(".*farna_prices_\d+.csv", f)]
 	onlyfiles.sort(reverse=True)
 	last_file = onlyfiles[0]
-
-	df = pd.read_csv(join(init_path, last_file), sep="|", header=0)
+	df = pd.read_csv(join(init_path, last_file), sep="|", header=0, dtype = str)
+	df['precio'] = df['precio'].fillna(0)
+	df['precio'] = pd.to_numeric(df['precio'], errors='coerce') 
+	df['cantidad'] = pd.to_numeric(df['cantidad'], errors='coerce') 
 	return(df)
 
 precios = carga_precios()
@@ -104,12 +106,7 @@ def addData(btn):
 def decData(btn):
     row=btn.grid_info()['row']
     column=btn.grid_info()['column']
-    #print("Column : "+str(column)+" Row : "+str(row))
-    #widget0=tab2.grid_slaves(row=row,column=0)[0]
-    #widget1=tab2.grid_slaves(row=row,column=1)[0]
-    #widget2=tab2.grid_slaves(row=row,column=2)[0]
     widget3=tab2.grid_slaves(row=row,column=3)[0]
-    #print("Value at Column 1 : "+widget0.cget("text") +" Column 2 : "+widget1.cget("text") + " Column 3 : "+widget2.cget("text")+" Column 4 : "+widget3.cget("text"))
 
     #updating value of label
     widget3.config(text= "0" if int(widget3.cget("text")) == 0 else str(int(widget3.cget("text"))-1))
@@ -175,18 +172,50 @@ def limpia(): # self
 	print("total_items: "+ str(tot_items))
 
 def notaDigital(): # self
+	cod_pattern = re.compile('\d+') # (r'\d+')
+	prod_pattern = re.compile(r'.*\-\s*\d+\.?\d*$')	
+
 	result=tinfo.get(1.0, END) #+"-1c")
-	temp = [i for i in result.split("\n") if i != ""]
+	print(np.char.strip(result.split("\n")))
+	temp  = [i for i in np.char.strip(result.split("\n")) if cod_pattern.match(i)]
+	# temp = [i for i in result.split("\n") if cod_pattern.match(i)]
+	temp2 = [i for i in np.char.strip(result.split("\n")) if prod_pattern.match(i)]
+
+	output2 = pd.DataFrame(
+	{
+	"cantidad" : [],
+	"producto" : [],
+	"precio" : [],
+	"codigo" : []
+	},	index = [])
+	# output2.precio.astype(str)
+	
+	for i in temp2:
+		output2 = output2.append({'producto': "-".join(re.split("-", i)[:-1])
+			# , 'cantidad': ""
+			, 'precio': float(re.split("-", i)[-1])
+			, 'codigo': ""
+			}, ignore_index=True)
+		print(output2)
+	output2["cantidad"] = 1
+	
 	prods1 = pd.DataFrame (temp, columns = ['id_product'])
-	output = pd.merge(prods1, precios, how="left", on="id_product")[["id_product", "producto_x", "comprados", "min_precio", "max_precio"]].sort_values("comprados", ascending=False)
+
+	output = pd.merge(prods1, precios, how="left", on="id_product")[["id_product", "producto", "precio"]]#.sort_values("precio", ascending=False)
 	output["comprados"] = 1
+	print(output.head())
+
 
 	global desg_compras
-	desg_compras["producto"] = output["producto_x"]
+	desg_compras["producto"] = output["producto"]
 	desg_compras["cantidad"] = output["comprados"]
-	desg_compras["precio"] = output["max_precio"]
+	desg_compras["precio"] = output["precio"]
 	desg_compras["codigo"] = output["id_product"]
-	print(desg_compras)
+
+	# merging code_prods and name_prods
+	desg_compras = pd.merge(output2, desg_compras, how = "outer")
+	desg_compras.precio.astype(float)
+	# print(desg_compras)
 
 	total_rows = desg_compras.shape[0]     
 	global tot_items 
@@ -273,8 +302,8 @@ def notaDigital(): # self
 	            	tab2.grid_columnconfigure(column,weight=1)  
 	
 	Total.delete("1.0", END)
-	sub_total = sum([ output.at[i, "comprados"] * output.at[i, "max_precio"] for i in range(output.shape[0]) if output.at[i,"max_precio"] > 0])
-	Total.insert(END, sub_total)
+	sub_total = sum([ desg_compras.at[i, "cantidad"] * desg_compras.at[i, "precio"] for i in range(desg_compras.shape[0]) if desg_compras.at[i,"precio"] > 0])
+	Total.insert(END, "{:.2f}".format(sub_total))
 
 	# tinfo.insert("1.0", output)
 	tinfo.delete("1.0", END)
@@ -290,6 +319,7 @@ def recalcular():
 	# print("Value1 : " + temp01.cget("text"))
 	# sub_total = sum([ output.at[i, "comprados"] * output.at[i, "max_precio"] for i in range(output.shape[0]) if output.at[i,"max_precio"] > 0])
 	Total.insert(END, "{:.2f}".format(sub_total))
+	print(desg_compras)
 	#tinfo.insert("1.0", output)
 	#tinfo.delete("1.0", END)	
 
